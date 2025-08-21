@@ -1,0 +1,6 @@
+{
+    "access_key": "七牛云的AK",
+    "secret_key": "七牛云的SK",
+    "bucket_name": "空间名",
+    "base_url": "域名"
+}
