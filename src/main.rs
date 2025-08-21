@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use chrono::{Datelike, Local};
-use log::{LevelFilter, Metadata, Record, info};
+use log::{LevelFilter, info};
 use qiniu_sdk::upload::{
     AutoUploader, AutoUploaderObjectParams, UploadManager, UploadTokenSigner,
     apis::credential::Credential,
@@ -8,52 +8,29 @@ use qiniu_sdk::upload::{
 use serde::Deserialize;
 use std::{
     env, fs,
-    fs::OpenOptions,
-    io::Write,
     path::{Path, PathBuf},
     time::Duration,
-    time::SystemTime,
 };
 
-/// 简单的文件日志器
-struct FileLogger {
-    file: std::sync::Mutex<std::fs::File>,
-}
-const LOG_FILE: &str = "uploader.log";
+const LOG_FILE: &str = "log.log";
 const CONFIG_FILE: &str = "config.json";
 const TOKEN_EXPIRY_SECS: u64 = 3600;
 
-impl log::Log for FileLogger {
-    fn enabled(&self, _metadata: &Metadata) -> bool {
-        true
-    }
+fn setup_logging() -> Result<()> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}] {} - {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                message
+            ))
+        })
+        .level(LevelFilter::Info)
+        .chain(fern::log_file(LOG_FILE)?)
+        .apply()
+        .context("Failed to initialize logging")?;
 
-    fn log(&self, record: &Record) {
-        let now = SystemTime::now();
-
-        let line = format!(
-            "[{}] {} - {}\n",
-            humantime::format_rfc3339_seconds(now),
-            record.level(),
-            record.args()
-        );
-        let _ = self.file.lock().unwrap().write_all(line.as_bytes());
-    }
-
-    fn flush(&self) {
-        let _ = self.file.lock().unwrap().flush();
-    }
-}
-
-fn init_logger() -> Result<(), Box<dyn std::error::Error>> {
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(LOG_FILE)?;
-    log::set_boxed_logger(Box::new(FileLogger {
-        file: std::sync::Mutex::new(file),
-    }))
-    .map(|()| log::set_max_level(LevelFilter::Info))?;
     Ok(())
 }
 
@@ -95,10 +72,8 @@ fn load_config() -> Result<Config> {
 }
 
 fn main() -> Result<()> {
+    setup_logging()?;
     let cfg = load_config()?;
-    // 1. 初始化日志到文件
-    init_logger().unwrap();
-    // 获取待上传文件路径
     let file_path = env::args().nth(1).context("usage: uploader <file-path>")?;
     let file_path = PathBuf::from(&file_path);
     if !file_path.is_file() {
@@ -132,10 +107,12 @@ fn main() -> Result<()> {
         .file_name(file_name)
         .build();
 
-    let ps = uploader.upload_path(file_path, params)?;
-    println!("ps:{:?}", ps);
-    let key = ps["key"].as_str().unwrap_or_default();
+    let response = uploader
+        .upload_path(&file_path, params)
+        .context("Failed to upload file")?;
+    let key = response["key"].as_str().unwrap_or_default();
     let final_url = format!("{}/{}", &cfg.base_url, key);
     println!("{}", final_url); // 供外部脚本捕获
+    info!("Upload successful: {}", final_url); // 记录日志
     Ok(())
 }

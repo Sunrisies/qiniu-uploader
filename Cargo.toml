@@ -7,9 +7,18 @@ edition = "2024"
 anyhow = "1.0.99"
 chrono = "0.4.41"
 env_logger = "0.11.8"
+fern = "0.7.1"
 humantime = "2.2.0"
 log = "0.4.27"
 qiniu-sdk = { version = "0.2.4", features = ["upload"] }
 reqwest = { version = "0.12.23", features = ["blocking", "json"] }
 serde = "1.0.219"
 serde_json = "1.0.143"
+
+
+[profile.release]
+lto = true           # 链接时优化
+codegen-units = 1    # 减少并行代码生成单元以提高优化
+panic = "abort"      # 使用 abort 而不是 unwind 减少 panic 处理代码
+opt-level = "z"      # 优化大小而非速度
+strip = true         # 剥离调试符号
