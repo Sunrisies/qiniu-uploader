@@ -1,3 +1,4 @@
+// use crate::
 use anyhow::{Context, Result, bail};
 use chrono::{Datelike, Local};
 use log::{LevelFilter, info};
@@ -5,13 +6,13 @@ use qiniu_sdk::upload::{
     AutoUploader, AutoUploaderObjectParams, UploadManager, UploadTokenSigner,
     apis::credential::Credential,
 };
+use qiniu_uploader::copy_file;
 use serde::Deserialize;
 use std::{
     env, fs,
     path::{Path, PathBuf},
     time::Duration,
 };
-
 const LOG_FILE: &str = "log.log";
 const CONFIG_FILE: &str = "config.json";
 const TOKEN_EXPIRY_SECS: u64 = 3600;
@@ -39,7 +40,8 @@ struct Config {
     access_key: String,
     secret_key: String,
     bucket_name: String,
-    base_url: String, // 七牛云存储的域名
+    base_url: String,         // 七牛云存储的域名
+    base_dir: Option<String>, // 上传文件的根目录
 }
 
 fn load_config() -> Result<Config> {
@@ -67,7 +69,9 @@ fn load_config() -> Result<Config> {
     if cfg.base_url.is_empty() {
         bail!("Base url cannot be empty");
     }
-
+    // if cfg.base_dir.is_empty() {
+    //     bail!("Base dir cannot be empty");
+    // }
     Ok(cfg)
 }
 
@@ -104,7 +108,7 @@ fn main() -> Result<()> {
 
     let params = AutoUploaderObjectParams::builder()
         .object_name(dir)
-        .file_name(file_name)
+        .file_name(&file_name)
         .build();
 
     let response = uploader
@@ -113,6 +117,21 @@ fn main() -> Result<()> {
     let key = response["key"].as_str().unwrap_or_default();
     let final_url = format!("{}/{}", &cfg.base_url, key);
     println!("{}", final_url); // 供外部脚本捕获
-    info!("Upload successful: {}", final_url); // 记录日志
+
+    // base_dir 存在才复制到本地
+    let dest_path = cfg
+        .base_dir
+        .as_ref()
+        .map(|dir| PathBuf::from(format!("{}\\{}", dir, file_name)));
+
+    if let Some(path) = dest_path {
+        match copy_file(&file_path, &path) {
+            Ok(_) => info!("本地备份成功: {}", path.display()),
+            Err(e) => info!("本地备份失败: {}", e),
+        }
+    } else {
+        info!("未配置 base_dir，仅云端存储");
+    }
+    info!("上传成功，文件链接: {}", final_url); // 记录日志
     Ok(())
 }
