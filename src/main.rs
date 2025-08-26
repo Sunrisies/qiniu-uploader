@@ -1,79 +1,16 @@
-// use crate::
 use anyhow::{Context, Result, bail};
 use chrono::{Datelike, Local};
-use log::{LevelFilter, info};
+use log::info;
 use qiniu_sdk::upload::{
     AutoUploader, AutoUploaderObjectParams, UploadManager, UploadTokenSigner,
     apis::credential::Credential,
 };
-use qiniu_uploader::copy_file;
-use serde::Deserialize;
+use qiniu_uploader::{TOKEN_EXPIRY_SECS, copy_file, load_config, setup_logging};
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
     time::Duration,
 };
-const LOG_FILE: &str = "log.log";
-const CONFIG_FILE: &str = "config.json";
-const TOKEN_EXPIRY_SECS: u64 = 3600;
-
-fn setup_logging() -> Result<()> {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}] {} - {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                record.level(),
-                message
-            ))
-        })
-        .level(LevelFilter::Info)
-        .chain(fern::log_file(LOG_FILE)?)
-        .apply()
-        .context("Failed to initialize logging")?;
-
-    Ok(())
-}
-
-#[derive(Deserialize, Debug)]
-struct Config {
-    access_key: String,
-    secret_key: String,
-    bucket_name: String,
-    base_url: String,         // 七牛云存储的域名
-    base_dir: Option<String>, // 上传文件的根目录
-}
-
-fn load_config() -> Result<Config> {
-    let exe_dir = env::current_exe()
-        .context("failed to get exe path")?
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    let cfg_path = exe_dir.join(CONFIG_FILE);
-
-    let cfg_str =
-        fs::read_to_string(&cfg_path).with_context(|| format!("cannot read {:?}", cfg_path))?;
-    let cfg: Config = serde_json::from_str(&cfg_str)?;
-
-    // 验证配置
-    if cfg.access_key.is_empty() {
-        bail!("Access key cannot be empty");
-    }
-    if cfg.secret_key.is_empty() {
-        bail!("Secret key cannot be empty");
-    }
-    if cfg.bucket_name.is_empty() {
-        bail!("Bucket name cannot be empty");
-    }
-    if cfg.base_url.is_empty() {
-        bail!("Base url cannot be empty");
-    }
-    // if cfg.base_dir.is_empty() {
-    //     bail!("Base dir cannot be empty");
-    // }
-    Ok(cfg)
-}
 
 fn main() -> Result<()> {
     setup_logging()?;
